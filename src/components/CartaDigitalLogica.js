@@ -22,86 +22,86 @@ export function useCartaDigitalLogica(carrito, vaciar) {
   const [sucursalSeleccionada, setSucursalSeleccionada] = useState(null);
   const [modoEntrega, setModoEntrega] = useState(null);
 
-  async function localizarTienda() {
-    if (!navigator.geolocation) {
-      Swal.fire("Error", "Tu navegador no soporta geolocalización.", "error");
-      return;
-    }
-
-    // Pedir ubicación con máxima precisión
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const ubicacion = {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-        };
-
-        setUbicacionCliente(ubicacion);
-
-        // Traer sucursales
-        const { data: sucursales, error } = await supabase
-          .from("sucursales")
-          .select("*");
-
-        if (error) {
-          console.error("Error cargando sucursales:", error);
-          Swal.fire("Error", "Error al obtener sucursales.", "error");
-          return;
-        }
-
-        if (!sucursales || sucursales.length === 0) {
-          Swal.fire("Aviso", "No hay sucursales registradas.", "warning");
-          return;
-        }
-
-        // Calcular sucursal más cercana
-        let menorDistancia = Infinity;
-        let sucursalCercana = null;
-
-        for (const suc of sucursales) {
-          const d = distanciaMetros(
-            ubicacion.lat,
-            ubicacion.lon,
-            suc.latitud,
-            suc.longitud
-          );
-          if (d < menorDistancia) {
-            menorDistancia = d;
-            sucursalCercana = suc;
-          }
-        }
-
-        setSucursalSeleccionada(sucursalCercana);
-      },
-      (error) => {
-        console.error("Error obteniendo ubicación:", error);
-        // Mensaje claro según error
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            Swal.fire({
-              icon: "warning",
-              title: "Permiso denegado",
-              html: `No pudimos acceder a tu ubicación.<br>
-                   Por favor, permite el acceso o ingresa tu dirección manualmente.`,
-            });
-            break;
-          case error.POSITION_UNAVAILABLE:
-            Swal.fire("Error", "Ubicación no disponible.", "error");
-            break;
-          case error.TIMEOUT:
-            Swal.fire("Error", "Tiempo de espera agotado.", "error");
-            break;
-          default:
-            Swal.fire(
-              "Error",
-              "Error desconocido al obtener ubicación.",
-              "error"
-            );
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+async function localizarTienda() {
+  if (!navigator.geolocation) {
+    Swal.fire("Error", "Tu navegador no soporta geolocalización.", "error");
+    return;
   }
+
+  // Pedimos la ubicación al usuario
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const ubicacion = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+      };
+      setUbicacionCliente(ubicacion);
+
+      // Traemos sucursales de Supabase
+      const { data: sucursales, error } = await supabase
+        .from("sucursales")
+        .select("*");
+
+      if (error) {
+        console.error("Error cargando sucursales:", error);
+        Swal.fire("Error", "Error al obtener sucursales.", "error");
+        return;
+      }
+
+      if (!sucursales || sucursales.length === 0) {
+        Swal.fire("Aviso", "No hay sucursales registradas.", "warning");
+        return;
+      }
+
+      // Calculamos la sucursal más cercana
+      let menorDistancia = Infinity;
+      let sucursalCercana = null;
+
+      for (const suc of sucursales) {
+        const d = distanciaMetros(
+          ubicacion.lat,
+          ubicacion.lon,
+          suc.latitud,
+          suc.longitud
+        );
+
+        if (d < menorDistancia) {
+          menorDistancia = d;
+          sucursalCercana = suc;
+        }
+      }
+
+      setSucursalSeleccionada(sucursalCercana);
+    },
+    (err) => {
+      // Manejo de errores si el usuario rechaza o hay problema
+      console.error("Error geolocalización:", err);
+      let mensaje = "";
+
+      switch (err.code) {
+        case err.PERMISSION_DENIED:
+          mensaje = "Permiso denegado. Por favor permite el acceso a tu ubicación.";
+          break;
+        case err.POSITION_UNAVAILABLE:
+          mensaje = "Ubicación no disponible. Intenta nuevamente más tarde.";
+          break;
+        case err.TIMEOUT:
+          mensaje = "Tiempo de espera agotado. Intenta nuevamente.";
+          break;
+        default:
+          mensaje = "No se pudo obtener tu ubicación.";
+      }
+
+      Swal.fire("Error", mensaje, "error");
+    },
+    {
+      enableHighAccuracy: true, // más precisión si el dispositivo lo permite
+      timeout: 10000, // 10 segundos
+      maximumAge: 0, // no usar caché
+    }
+  );
+}
+
 
   async function finalizarPedido(datosDelivery = null) {
     if (!sucursalSeleccionada) {
