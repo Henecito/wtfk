@@ -36,3 +36,12 @@
     transform: rotate(360deg);
   }
 }
+
+.leaflet-container {
+  z-index: 2000 !important;
+}
+
+.modal-content {
+  position: relative;
+  z-index: 3000 !important;
+}
