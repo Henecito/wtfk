@@ -28,48 +28,79 @@ export function useCartaDigitalLogica(carrito, vaciar) {
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const ubicacion = {
-        lat: pos.coords.latitude,
-        lon: pos.coords.longitude,
-      };
+    // Pedir ubicación con máxima precisión
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const ubicacion = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        };
 
-      setUbicacionCliente(ubicacion);
+        setUbicacionCliente(ubicacion);
 
-      const { data: sucursales, error } = await supabase
-        .from("sucursales")
-        .select("*");
+        // Traer sucursales
+        const { data: sucursales, error } = await supabase
+          .from("sucursales")
+          .select("*");
 
-      if (error) {
-        console.error("Error cargando sucursales:", error);
-        Swal.fire("Error", "Error al obtener sucursales.", "error");
-        return;
-      }
-
-      if (!sucursales || sucursales.length === 0) {
-        Swal.fire("Aviso", "No hay sucursales registradas.", "warning");
-        return;
-      }
-
-      let menorDistancia = Infinity;
-      let sucursalCercana = null;
-
-      for (const suc of sucursales) {
-        const d = distanciaMetros(
-          ubicacion.lat,
-          ubicacion.lon,
-          suc.latitud,
-          suc.longitud
-        );
-
-        if (d < menorDistancia) {
-          menorDistancia = d;
-          sucursalCercana = suc;
+        if (error) {
+          console.error("Error cargando sucursales:", error);
+          Swal.fire("Error", "Error al obtener sucursales.", "error");
+          return;
         }
-      }
 
-      setSucursalSeleccionada(sucursalCercana);
-    });
+        if (!sucursales || sucursales.length === 0) {
+          Swal.fire("Aviso", "No hay sucursales registradas.", "warning");
+          return;
+        }
+
+        // Calcular sucursal más cercana
+        let menorDistancia = Infinity;
+        let sucursalCercana = null;
+
+        for (const suc of sucursales) {
+          const d = distanciaMetros(
+            ubicacion.lat,
+            ubicacion.lon,
+            suc.latitud,
+            suc.longitud
+          );
+          if (d < menorDistancia) {
+            menorDistancia = d;
+            sucursalCercana = suc;
+          }
+        }
+
+        setSucursalSeleccionada(sucursalCercana);
+      },
+      (error) => {
+        console.error("Error obteniendo ubicación:", error);
+        // Mensaje claro según error
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            Swal.fire({
+              icon: "warning",
+              title: "Permiso denegado",
+              html: `No pudimos acceder a tu ubicación.<br>
+                   Por favor, permite el acceso o ingresa tu dirección manualmente.`,
+            });
+            break;
+          case error.POSITION_UNAVAILABLE:
+            Swal.fire("Error", "Ubicación no disponible.", "error");
+            break;
+          case error.TIMEOUT:
+            Swal.fire("Error", "Tiempo de espera agotado.", "error");
+            break;
+          default:
+            Swal.fire(
+              "Error",
+              "Error desconocido al obtener ubicación.",
+              "error"
+            );
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   }
 
   async function finalizarPedido(datosDelivery = null) {
