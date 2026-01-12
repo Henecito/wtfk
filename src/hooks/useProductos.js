@@ -18,7 +18,8 @@ export function useProductos(sucursalId) {
       const { data, error } = await supabase
         .from("productos")
         .select("*")
-        .eq("sucursal_id", sucursalId);
+        .eq("sucursal_id", sucursalId)
+        .eq("activo", true); // 👈 SOLO PRODUCTOS ACTIVOS
 
       if (error) {
         console.error("Error cargando productos:", error);

@@ -6,7 +6,7 @@ const categorias = [
   "Bebidas",
   "Hamburguesas",
   "Entradas",
-  "Combos"
+  "Combos",
 ];
 
 export default function BarraCategorias({ activa, setActiva }) {
