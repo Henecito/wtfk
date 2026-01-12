@@ -20,7 +20,8 @@ export default function ModalConfirmacionDomicilio({
   const mapaRef = useRef(null);
   const markerRef = useRef(null);
 
-  // Cargar Leaflet
+  /* ================= LEAFLET ================= */
+
   useEffect(() => {
     if (window.L) return;
 
@@ -37,7 +38,8 @@ export default function ModalConfirmacionDomicilio({
     document.body.appendChild(script);
   }, []);
 
-  // Inicializar coordenadas
+  /* ================= COORDENADAS ================= */
+
   useEffect(() => {
     if (abierto && ubicacionCliente) {
       setCoordenadas({
@@ -47,7 +49,8 @@ export default function ModalConfirmacionDomicilio({
     }
   }, [abierto, ubicacionCliente]);
 
-  // Crear mapa
+  /* ================= MAPA ================= */
+
   useEffect(() => {
     if (!abierto || !coordenadas || !window.L) return;
 
@@ -114,7 +117,8 @@ export default function ModalConfirmacionDomicilio({
     };
   }, [abierto, coordenadas]);
 
-  // Actualizar mapa al seleccionar "Usar ubicación actual"
+  /* ================= USAR UBICACIÓN ================= */
+
   useEffect(() => {
     if (
       !usarUbicacion ||
@@ -127,11 +131,9 @@ export default function ModalConfirmacionDomicilio({
     const nuevaPos = { lat: ubicacionCliente.lat, lon: ubicacionCliente.lon };
     setCoordenadas(nuevaPos);
 
-    // Mover marcador y centrar mapa
     markerRef.current.setLatLng([nuevaPos.lat, nuevaPos.lon]);
     mapaRef.current.setView([nuevaPos.lat, nuevaPos.lon], 16);
 
-    // Obtener dirección de nuevo
     (async () => {
       try {
         setCargandoDir(true);
@@ -148,7 +150,8 @@ export default function ModalConfirmacionDomicilio({
     })();
   }, [usarUbicacion, ubicacionCliente]);
 
-  // Autocompletado para dirección manual
+  /* ================= BUSCADOR PRECISO ================= */
+
   useEffect(() => {
     if (!direccionManual || usarUbicacion) {
       setSugerencias([]);
@@ -157,20 +160,32 @@ export default function ModalConfirmacionDomicilio({
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-            direccionManual
-          )}&format=json&addressdetails=1&limit=5`
-        );
+        const lat = ubicacionCliente?.lat;
+        const lon = ubicacionCliente?.lon;
+
+        const url =
+          `https://nominatim.openstreetmap.org/search?` +
+          `q=${encodeURIComponent(direccionManual)}` +
+          `&format=json` +
+          `&addressdetails=1` +
+          `&limit=5` +
+          `&countrycodes=cl` +
+          (lat && lon
+            ? `&viewbox=${lon - 0.2},${lat + 0.2},${lon + 0.2},${lat - 0.2}&bounded=1`
+            : "");
+
+        const res = await fetch(url);
         const data = await res.json();
         setSugerencias(data);
       } catch (error) {
         console.error(error);
       }
-    }, 300); // debounce
+    }, 300);
 
     return () => clearTimeout(timer);
-  }, [direccionManual, usarUbicacion]);
+  }, [direccionManual, usarUbicacion, ubicacionCliente]);
+
+  /* ================= CONFIRMAR ================= */
 
   function confirmar() {
     if (!nombre.trim()) return alert("Por favor ingresa tu nombre.");
@@ -296,7 +311,7 @@ export default function ModalConfirmacionDomicilio({
                   className="form-control mb-2"
                   value={direccionManual}
                   onChange={(e) => setDireccionManual(e.target.value)}
-                  placeholder="Calle, número, block..."
+                  placeholder="Calle, número, comuna..."
                   autoComplete="off"
                 />
                 {sugerencias.length > 0 && (
@@ -311,16 +326,21 @@ export default function ModalConfirmacionDomicilio({
                         onClick={() => {
                           setDireccionManual(item.display_name);
                           const nuevaCoordenada = {
-                            lat: item.lat,
-                            lon: item.lon,
+                            lat: Number(item.lat),
+                            lon: Number(item.lon),
                           };
                           setCoordenadas(nuevaCoordenada);
                           setSugerencias([]);
 
-                          // mover marcador si existe
                           if (markerRef.current && mapaRef.current) {
-                            markerRef.current.setLatLng([item.lat, item.lon]);
-                            mapaRef.current.setView([item.lat, item.lon], 16);
+                            markerRef.current.setLatLng([
+                              nuevaCoordenada.lat,
+                              nuevaCoordenada.lon,
+                            ]);
+                            mapaRef.current.setView(
+                              [nuevaCoordenada.lat, nuevaCoordenada.lon],
+                              16
+                            );
                           }
                         }}
                       >
