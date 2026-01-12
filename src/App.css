@@ -45,3 +45,7 @@
   position: relative;
   z-index: 3000 !important;
 }
+
+.pac-container {
+  z-index: 20000 !important;
+}

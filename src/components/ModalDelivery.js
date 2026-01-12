@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-export default function ModalConfirmacionDomicilioGoogle({
+export default function ModalConfirmacion({
   abierto,
   onCerrar,
   ubicacionCliente,
@@ -154,6 +154,8 @@ export default function ModalConfirmacionDomicilioGoogle({
               ref={inputRef}
               className="form-control"
               placeholder="Calle, número, comuna..."
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
             />
 
             <div
@@ -187,7 +189,6 @@ export default function ModalConfirmacionDomicilioGoogle({
               onChange={(e) => setComentarios(e.target.value)}
               placeholder="Indicaciones extras"
             />
-
           </div>
 
           <div className="modal-footer">
