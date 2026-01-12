@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
-export default function ModalConfirmacionDomicilio({
+export default function ModalConfirmacionDomicilioGoogle({
   abierto,
   onCerrar,
   ubicacionCliente,
@@ -8,201 +8,105 @@ export default function ModalConfirmacionDomicilio({
 }) {
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
-  const [usarUbicacion, setUsarUbicacion] = useState(true);
-  const [direccionManual, setDireccionManual] = useState("");
   const [referencias, setReferencias] = useState("");
   const [comentarios, setComentarios] = useState("");
-  const [direccionAuto, setDireccionAuto] = useState("");
-  const [cargandoDir, setCargandoDir] = useState(false);
-  const [sugerencias, setSugerencias] = useState([]);
+  const [direccion, setDireccion] = useState("");
 
-  const [coordenadas, setCoordenadas] = useState(null);
-  const mapaRef = useRef(null);
+  const mapRef = useRef(null);
+  const inputRef = useRef(null);
   const markerRef = useRef(null);
+  const googleMapRef = useRef(null);
 
-  /* ================= LEAFLET ================= */
-
-  useEffect(() => {
-    if (window.L) return;
-
-    if (!document.getElementById("leaflet-css")) {
-      const link = document.createElement("link");
-      link.id = "leaflet-css";
-      link.rel = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      document.head.appendChild(link);
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    document.body.appendChild(script);
-  }, []);
-
-  /* ================= COORDENADAS ================= */
+  /* ================= INIT MAP ================= */
 
   useEffect(() => {
-    if (abierto && ubicacionCliente) {
-      setCoordenadas({
+    if (!abierto || !window.google || !ubicacionCliente) return;
+
+    setTimeout(() => {
+      const center = {
         lat: ubicacionCliente.lat,
-        lon: ubicacionCliente.lon,
+        lng: ubicacionCliente.lon,
+      };
+
+      const map = new window.google.maps.Map(mapRef.current, {
+        center,
+        zoom: 16,
+        disableDefaultUI: true,
       });
-    }
+
+      const marker = new window.google.maps.Marker({
+        position: center,
+        map,
+        draggable: true,
+      });
+
+      googleMapRef.current = map;
+      markerRef.current = marker;
+
+      // Reverse geocode al mover pin
+      marker.addListener("dragend", async () => {
+        const pos = marker.getPosition();
+        map.panTo(pos);
+        await reverseGeocode(pos.lat(), pos.lng());
+      });
+
+      // Autocomplete
+      const autocomplete = new window.google.maps.places.Autocomplete(
+        inputRef.current,
+        {
+          fields: ["geometry", "formatted_address"],
+          componentRestrictions: { country: "cl" },
+        }
+      );
+
+      autocomplete.addListener("place_changed", () => {
+        const place = autocomplete.getPlace();
+        if (!place.geometry) return;
+
+        const loc = place.geometry.location;
+        map.setCenter(loc);
+        marker.setPosition(loc);
+        setDireccion(place.formatted_address);
+      });
+
+      reverseGeocode(center.lat, center.lng);
+    }, 300);
   }, [abierto, ubicacionCliente]);
 
-  /* ================= MAPA ================= */
+  /* ================= REVERSE ================= */
 
-  useEffect(() => {
-    if (!abierto || !coordenadas || !window.L) return;
-
-    const timer = setTimeout(() => {
-      const mapElement = document.getElementById("mapa-delivery");
-      if (!mapElement) return;
-
-      if (mapaRef.current) {
-        mapaRef.current.remove();
-        mapaRef.current = null;
+  async function reverseGeocode(lat, lng) {
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=AIzaSyBHeNuhtM-s14YORRoNuFjvzXlAw68o_kU`
+      );
+      const data = await res.json();
+      if (data.results?.[0]) {
+        setDireccion(data.results[0].formatted_address);
       }
-
-      try {
-        const map = window.L.map("mapa-delivery", {
-          center: [coordenadas.lat, coordenadas.lon],
-          zoom: 16,
-        });
-
-        window.L.tileLayer(
-          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-          {
-            attribution: "© OpenStreetMap",
-            maxZoom: 19,
-          }
-        ).addTo(map);
-
-        const marker = window.L.marker([coordenadas.lat, coordenadas.lon], {
-          draggable: true,
-        }).addTo(map);
-
-        marker.on("dragend", async function () {
-          const pos = marker.getLatLng();
-          setCoordenadas({ lat: pos.lat, lon: pos.lng });
-
-          try {
-            setCargandoDir(true);
-            const res = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${pos.lat}&lon=${pos.lng}&format=json`
-            );
-            const data = await res.json();
-            setDireccionAuto(data.display_name || "Dirección no disponible");
-          } catch (error) {
-            setDireccionAuto("No se pudo obtener la dirección");
-          } finally {
-            setCargandoDir(false);
-          }
-        });
-
-        mapaRef.current = map;
-        markerRef.current = marker;
-
-        setTimeout(() => map.invalidateSize(), 100);
-      } catch (error) {
-        console.error(error);
-      }
-    }, 300);
-
-    return () => {
-      clearTimeout(timer);
-      if (mapaRef.current) {
-        mapaRef.current.remove();
-        mapaRef.current = null;
-      }
-    };
-  }, [abierto, coordenadas]);
-
-  /* ================= USAR UBICACIÓN ================= */
-
-  useEffect(() => {
-    if (
-      !usarUbicacion ||
-      !ubicacionCliente ||
-      !mapaRef.current ||
-      !markerRef.current
-    )
-      return;
-
-    const nuevaPos = { lat: ubicacionCliente.lat, lon: ubicacionCliente.lon };
-    setCoordenadas(nuevaPos);
-
-    markerRef.current.setLatLng([nuevaPos.lat, nuevaPos.lon]);
-    mapaRef.current.setView([nuevaPos.lat, nuevaPos.lon], 16);
-
-    (async () => {
-      try {
-        setCargandoDir(true);
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${nuevaPos.lat}&lon=${nuevaPos.lon}&format=json`
-        );
-        const data = await res.json();
-        setDireccionAuto(data.display_name || "Dirección no disponible");
-      } catch (error) {
-        setDireccionAuto("No se pudo obtener la dirección");
-      } finally {
-        setCargandoDir(false);
-      }
-    })();
-  }, [usarUbicacion, ubicacionCliente]);
-
-  /* ================= BUSCADOR PRECISO ================= */
-
-  useEffect(() => {
-    if (!direccionManual || usarUbicacion) {
-      setSugerencias([]);
-      return;
+    } catch (e) {
+      console.error(e);
     }
+  }
 
-    const timer = setTimeout(async () => {
-      try {
-        const lat = ubicacionCliente?.lat;
-        const lon = ubicacionCliente?.lon;
-
-        const url =
-          `https://nominatim.openstreetmap.org/search?` +
-          `q=${encodeURIComponent(direccionManual)}` +
-          `&format=json` +
-          `&addressdetails=1` +
-          `&limit=5` +
-          `&countrycodes=cl` +
-          (lat && lon
-            ? `&viewbox=${lon - 0.2},${lat + 0.2},${lon + 0.2},${lat - 0.2}&bounded=1`
-            : "");
-
-        const res = await fetch(url);
-        const data = await res.json();
-        setSugerencias(data);
-      } catch (error) {
-        console.error(error);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [direccionManual, usarUbicacion, ubicacionCliente]);
-
-  /* ================= CONFIRMAR ================= */
+  /* ================= CONFIRM ================= */
 
   function confirmar() {
-    if (!nombre.trim()) return alert("Por favor ingresa tu nombre.");
-    if (!telefono.trim())
-      return alert("Por favor ingresa tu número de contacto.");
-    if (!usarUbicacion && !direccionManual.trim())
-      return alert("Por favor ingresa tu dirección manual.");
+    if (!nombre.trim()) return alert("Ingresa tu nombre");
+    if (!telefono.trim()) return alert("Ingresa tu teléfono");
+    if (!markerRef.current) return;
+
+    const pos = markerRef.current.getPosition();
 
     const data = {
       tipoEntrega: "delivery",
       nombre,
       telefono,
-      direccion:
-        usarUbicacion && direccionAuto
-          ? direccionAuto
-          : direccionManual || "Sin dirección",
-      coordenadas: usarUbicacion ? coordenadas : null,
+      direccion,
+      coordenadas: {
+        lat: pos.lat(),
+        lon: pos.lng(),
+      },
       referencias,
       comentarios,
     };
@@ -215,23 +119,21 @@ export default function ModalConfirmacionDomicilio({
   return (
     <div
       className="modal fade show"
-      style={{
-        display: "block",
-        backgroundColor: "rgba(0,0,0,0.5)",
-        zIndex: 1050,
-      }}
+      style={{ display: "block", background: "rgba(0,0,0,0.5)", zIndex: 1050 }}
     >
       <div className="modal-dialog modal-dialog-centered modal-lg">
-        <div className="modal-content" style={{ borderRadius: 20 }}>
+        <div className="modal-content rounded-4">
+
           <div className="modal-header">
             <h5 className="modal-title fw-bold">
-              Datos de entrega a domicilio
+              Dirección de entrega
             </h5>
             <button className="btn-close" onClick={onCerrar}></button>
           </div>
 
           <div className="modal-body">
-            <label className="fw-semibold mt-2">Nombre</label>
+
+            <label className="fw-semibold">Nombre</label>
             <input
               className="form-control"
               value={nombre}
@@ -239,7 +141,7 @@ export default function ModalConfirmacionDomicilio({
               placeholder="Tu nombre"
             />
 
-            <label className="fw-semibold mt-3">WhatsApp / Teléfono</label>
+            <label className="fw-semibold mt-3">Teléfono</label>
             <input
               className="form-control"
               value={telefono}
@@ -247,110 +149,26 @@ export default function ModalConfirmacionDomicilio({
               placeholder="+56 9 ..."
             />
 
-            <label className="fw-semibold mt-3">Dirección</label>
+            <label className="fw-semibold mt-3">Buscar dirección</label>
+            <input
+              ref={inputRef}
+              className="form-control"
+              placeholder="Calle, número, comuna..."
+            />
 
-            <div className="form-check">
-              <input
-                className="form-check-input"
-                type="radio"
-                checked={usarUbicacion}
-                onChange={() => setUsarUbicacion(true)}
-              />
-              <label className="form-check-label">
-                Usar ubicación actual
-                <br />
-                <small className="text-muted">
-                  {cargandoDir
-                    ? "Obteniendo dirección..."
-                    : direccionAuto || "Sin dirección"}
-                </small>
-              </label>
-            </div>
+            <div
+              ref={mapRef}
+              style={{
+                height: 320,
+                width: "100%",
+                marginTop: 15,
+                borderRadius: 12,
+              }}
+            />
 
-            {(usarUbicacion || (!usarUbicacion && coordenadas)) && (
-              <>
-                <div
-                  id="mapa-delivery"
-                  style={{
-                    height: "300px",
-                    width: "100%",
-                    marginTop: "15px",
-                    marginBottom: "10px",
-                    borderRadius: "10px",
-                    border: "2px solid #dee2e6",
-                    backgroundColor: "#e9ecef",
-                  }}
-                >
-                  {!window.L && (
-                    <div className="d-flex align-items-center justify-content-center h-100">
-                      <span className="text-muted">Cargando mapa...</span>
-                    </div>
-                  )}
-                </div>
-                <small className="text-muted d-block">
-                  💡 Mueve el marcador para ajustar tu ubicación exacta
-                </small>
-              </>
-            )}
-
-            <div className="form-check mt-3 mb-2">
-              <input
-                className="form-check-input"
-                type="radio"
-                checked={!usarUbicacion}
-                onChange={() => setUsarUbicacion(false)}
-              />
-              <label className="form-check-label">
-                Ingresar dirección manual
-              </label>
-            </div>
-
-            {!usarUbicacion && (
-              <div style={{ position: "relative" }}>
-                <input
-                  className="form-control mb-2"
-                  value={direccionManual}
-                  onChange={(e) => setDireccionManual(e.target.value)}
-                  placeholder="Calle, número, comuna..."
-                  autoComplete="off"
-                />
-                {sugerencias.length > 0 && (
-                  <ul
-                    className="list-group position-absolute w-100"
-                    style={{ zIndex: 1100, maxHeight: 150, overflowY: "auto" }}
-                  >
-                    {sugerencias.map((item) => (
-                      <li
-                        key={item.place_id}
-                        className="list-group-item list-group-item-action"
-                        onClick={() => {
-                          setDireccionManual(item.display_name);
-                          const nuevaCoordenada = {
-                            lat: Number(item.lat),
-                            lon: Number(item.lon),
-                          };
-                          setCoordenadas(nuevaCoordenada);
-                          setSugerencias([]);
-
-                          if (markerRef.current && mapaRef.current) {
-                            markerRef.current.setLatLng([
-                              nuevaCoordenada.lat,
-                              nuevaCoordenada.lon,
-                            ]);
-                            mapaRef.current.setView(
-                              [nuevaCoordenada.lat, nuevaCoordenada.lon],
-                              16
-                            );
-                          }
-                        }}
-                      >
-                        {item.display_name}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
+            <small className="text-muted d-block mt-2">
+              Mueve el marcador si deseas ajustar el punto exacto
+            </small>
 
             <label className="fw-semibold mt-3">Referencias</label>
             <textarea
@@ -358,7 +176,7 @@ export default function ModalConfirmacionDomicilio({
               rows="2"
               value={referencias}
               onChange={(e) => setReferencias(e.target.value)}
-              placeholder="Punto de referencia, color del portón..."
+              placeholder="Portón negro, casa esquina, etc."
             />
 
             <label className="fw-semibold mt-3">Comentarios</label>
@@ -367,22 +185,20 @@ export default function ModalConfirmacionDomicilio({
               rows="2"
               value={comentarios}
               onChange={(e) => setComentarios(e.target.value)}
-              placeholder="Instrucciones extras"
+              placeholder="Indicaciones extras"
             />
+
           </div>
 
           <div className="modal-footer">
             <button className="btn btn-danger" onClick={onCerrar}>
               Cancelar
             </button>
-            <button
-              className="btn btn-dark fw-bold"
-              onClick={confirmar}
-              disabled={cargandoDir}
-            >
-              {cargandoDir ? "Cargando..." : "Finalizar pedido"}
+            <button className="btn btn-dark fw-bold" onClick={confirmar}>
+              Confirmar pedido
             </button>
           </div>
+
         </div>
       </div>
     </div>
