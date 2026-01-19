@@ -1,9 +1,13 @@
 import React, { useState } from "react";
+import Swal from "sweetalert2";
+
 import { useProductos } from "../hooks/useProductos";
 import { useCarrito } from "../hooks/useCarrito";
 import { useCartaDigitalLogica } from "./CartaDigitalLogica";
+
 import CartaDigitalVista from "./CartaDigitalVista";
 import ModalConfirmacionDomicilio from "./ModalDelivery";
+import ModalRetiro from "./ModalRetiro";
 
 export default function CartaDigital() {
   const [categoriaActiva, setCategoriaActiva] = useState("Todas");
@@ -11,8 +15,9 @@ export default function CartaDigital() {
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
   const [modalAbierto, setModalAbierto] = useState(false);
 
-  // Modal para datos de delivery
+  // modales
   const [mostrarModalDelivery, setMostrarModalDelivery] = useState(false);
+  const [mostrarModalRetiro, setMostrarModalRetiro] = useState(false);
 
   const { carrito, agregar, eliminar, vaciar } = useCarrito();
 
@@ -39,26 +44,41 @@ export default function CartaDigital() {
     setProductoSeleccionado(null);
   }
 
-  // Recibe los datos desde el modal y finaliza el pedido
+  /* ================= CONFIRMACIONES ================= */
+
   function confirmarDatosDomicilio(data) {
     finalizarPedido(data);
     setMostrarModalDelivery(false);
   }
 
-  // Intercepta finalizar pedido cuando es domicilio
+  function confirmarDatosRetiro(data) {
+    finalizarPedido(data);
+    setMostrarModalRetiro(false);
+  }
+
   function manejarFinalizarPedido() {
     if (modoEntrega === "domicilio") {
       setMostrarModalDelivery(true);
       return;
     }
-    finalizarPedido();
+
+    if (modoEntrega === "retiro") {
+      setMostrarModalRetiro(true);
+      return;
+    }
+
+    Swal.fire("Error", "Debes seleccionar retiro o delivery", "error");
   }
+
+  /* ================= FILTRO ================= */
 
   const productosFiltrados = productos.filter(
     (prod) =>
       (categoriaActiva === "Todas" || prod.categoria === categoriaActiva) &&
       prod.nombre.toLowerCase().includes(busqueda.toLowerCase())
   );
+
+  /* ================= RENDER ================= */
 
   return (
     <>
@@ -82,16 +102,21 @@ export default function CartaDigital() {
         modalAbierto={modalAbierto}
         cerrarModal={cerrarModal}
         agregar={agregar}
-        mostrarModalDelivery={mostrarModalDelivery}
-        setMostrarModalDelivery={setMostrarModalDelivery}
       />
 
-      {/* 🔥 Modal conectado correctamente */}
+      {/* ===== MODAL DELIVERY ===== */}
       <ModalConfirmacionDomicilio
         abierto={mostrarModalDelivery}
         onCerrar={() => setMostrarModalDelivery(false)}
         ubicacionCliente={ubicacionCliente}
         onConfirmarDomicilio={confirmarDatosDomicilio}
+      />
+
+      {/* ===== MODAL RETIRO ===== */}
+      <ModalRetiro
+        abierto={mostrarModalRetiro}
+        onCerrar={() => setMostrarModalRetiro(false)}
+        onConfirmarRetiro={confirmarDatosRetiro}
       />
     </>
   );

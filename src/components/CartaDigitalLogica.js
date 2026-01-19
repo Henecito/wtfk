@@ -28,7 +28,6 @@ export function useCartaDigitalLogica(carrito, vaciar) {
       return;
     }
 
-    // Pedimos la ubicación al usuario
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const ubicacion = {
@@ -37,7 +36,6 @@ export function useCartaDigitalLogica(carrito, vaciar) {
         };
         setUbicacionCliente(ubicacion);
 
-        // Traemos sucursales de Supabase
         const { data: sucursales, error } = await supabase
           .from("sucursales")
           .select("*");
@@ -53,7 +51,6 @@ export function useCartaDigitalLogica(carrito, vaciar) {
           return;
         }
 
-        // Calculamos la sucursal más cercana
         let menorDistancia = Infinity;
         let sucursalCercana = null;
 
@@ -74,7 +71,6 @@ export function useCartaDigitalLogica(carrito, vaciar) {
         setSucursalSeleccionada(sucursalCercana);
       },
       (err) => {
-        // Manejo de errores si el usuario rechaza o hay problema
         console.error("Error geolocalización:", err);
         let mensaje = "";
 
@@ -96,36 +92,44 @@ export function useCartaDigitalLogica(carrito, vaciar) {
         Swal.fire("Error", mensaje, "error");
       },
       {
-        enableHighAccuracy: true, // más precisión si el dispositivo lo permite
-        timeout: 10000, // 10 segundos
-        maximumAge: 0, // no usar caché
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
       }
     );
   }
 
-  async function finalizarPedido(datosDelivery = null) {
+  async function finalizarPedido(datosCliente = null) {
     if (!sucursalSeleccionada) {
       Swal.fire("Error", "No hay sucursal seleccionada", "error");
-      return;
+      return false;
+    }
+
+    if (!modoEntrega) {
+      Swal.fire("Error", "Selecciona retiro o delivery", "error");
+      return false;
     }
 
     if (carrito.length === 0) {
       Swal.fire("Error", "El carrito está vacío", "error");
-      return;
+      return false;
+    }
+
+    if (!datosCliente?.nombre || !datosCliente?.telefono) {
+      Swal.fire("Error", "Faltan datos del cliente", "error");
+      return false;
     }
 
     try {
       const totalPedido = carrito.reduce((acc, item) => {
-        // Suma del precio base del producto
         let subtotal = item.precio * (item.cantidad || 1);
 
-        // Suma del precio de extras, si los hay
         if (item.extras && item.extras.length > 0) {
           const extrasTotal = item.extras.reduce(
             (sum, e) => sum + Number(e.precio),
             0
           );
-          subtotal += extrasTotal * (item.cantidad || 1); // multiplicar por cantidad
+          subtotal += extrasTotal * (item.cantidad || 1);
         }
 
         return acc + subtotal;
@@ -138,17 +142,18 @@ export function useCartaDigitalLogica(carrito, vaciar) {
         total: totalPedido,
         cliente_lat: ubicacionCliente?.lat || null,
         cliente_lon: ubicacionCliente?.lon || null,
+        cliente_nombre: datosCliente.nombre,
+        cliente_telefono: datosCliente.telefono,
       };
 
-      if (modoEntrega === "domicilio" && datosDelivery) {
-        pedidoBase.cliente_nombre = datosDelivery.nombre;
-        pedidoBase.cliente_telefono = datosDelivery.telefono;
-        pedidoBase.direccion_entrega = datosDelivery.direccion;
-        pedidoBase.referencias = datosDelivery.referencias || null;
-        pedidoBase.comentarios = datosDelivery.comentarios || null;
-        if (datosDelivery.coordenadas) {
-          pedidoBase.cliente_lat = datosDelivery.coordenadas.lat;
-          pedidoBase.cliente_lon = datosDelivery.coordenadas.lon;
+      if (modoEntrega === "domicilio") {
+        pedidoBase.direccion_entrega = datosCliente.direccion;
+        pedidoBase.referencias = datosCliente.referencias || null;
+        pedidoBase.comentarios = datosCliente.comentarios || null;
+
+        if (datosCliente.coordenadas) {
+          pedidoBase.cliente_lat = datosCliente.coordenadas.lat;
+          pedidoBase.cliente_lon = datosCliente.coordenadas.lon;
         }
       }
 
@@ -166,7 +171,6 @@ export function useCartaDigitalLogica(carrito, vaciar) {
       }
 
       const pedidoId = pedidoData.id;
-      console.log("✅ Pedido creado con ID:", pedidoId);
 
       const itemsInsert = carrito.map((item) => ({
         pedido_id: pedidoId,
@@ -174,7 +178,7 @@ export function useCartaDigitalLogica(carrito, vaciar) {
         nombre: item.nombre,
         precio: item.precio,
         cantidad: item.cantidad || 1,
-        comentario: item.comentario || null, // 👈 AQUÍ
+        comentario: item.comentario || null,
       }));
 
       const { error: errorItems } = await supabase
@@ -186,19 +190,16 @@ export function useCartaDigitalLogica(carrito, vaciar) {
         throw errorItems;
       }
 
-      console.log("✅ Items insertados correctamente");
-
       vaciar();
 
-      // ✅ Mensaje con SweetAlert2
       if (modoEntrega === "domicilio") {
         await Swal.fire({
           icon: "success",
           title: "Pedido confirmado",
           html: `
-            Será entregado en:<br><b>${datosDelivery.direccion}</b><br><br>
+            Será entregado en:<br><b>${datosCliente.direccion}</b><br><br>
             Total: <b>$${totalPedido.toLocaleString()}</b><br><br>
-            Te contactaremos al <b>${datosDelivery.telefono}</b>
+            Te contactaremos al <b>${datosCliente.telefono}</b>
           `,
           confirmButtonText: "Aceptar",
         });
@@ -207,10 +208,9 @@ export function useCartaDigitalLogica(carrito, vaciar) {
           icon: "success",
           title: "Pedido confirmado",
           html: `
-            Retira tu pedido en:<br><b>${
-              sucursalSeleccionada.nombre
-            }</b><br><br>
-            Total: <b>$${totalPedido.toLocaleString()}</b>
+            Retira tu pedido en:<br><b>${sucursalSeleccionada.nombre}</b><br><br>
+            Total: <b>$${totalPedido.toLocaleString()}</b><br><br>
+            Te avisaremos al <b>${datosCliente.telefono}</b>
           `,
           confirmButtonText: "Aceptar",
         });
@@ -221,7 +221,7 @@ export function useCartaDigitalLogica(carrito, vaciar) {
       console.error("❌ Error finalizando pedido:", err);
       Swal.fire(
         "Error",
-        "Hubo un error. Por favor selecciona retiro o domicilio e intenta nuevamente.",
+        "Hubo un error al crear el pedido. Intenta nuevamente.",
         "error"
       );
       return false;
